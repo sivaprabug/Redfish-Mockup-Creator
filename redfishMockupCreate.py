@@ -72,16 +72,16 @@ def main():
             args.rhost = "http://{}".format( args.rhost )
 
     # Set up the output
+    # Create a timestamped subdirectory inside the output directory for each run
+    timestamp = datetime.datetime.now().strftime( "%m_%d_%Y_%H%M%S" )
+    args.Dir = os.path.join( args.Dir, timestamp )
+
     if not os.path.isdir( args.Dir ):
         # Does not exist; make the directory
         try:
             os.makedirs( args.Dir )
         except Exception as err:
             print( "ERROR: Aborting; could not create output directory '{}': {}".format( args.Dir, err ) )
-            sys.exit( 1 )
-    else:
-        if len( os.listdir( args.Dir ) ) != 0:
-            print( "ERROR: Aborting; output directory not empty..." )
             sys.exit( 1 )
 
     print( "Redfish Mockup Creator, Version {}".format( tool_version ) )
