@@ -53,6 +53,7 @@ def main():
     argget.add_argument( "--trace", "-trace", action = "store_true", help = "Enable tracing; creates the file rf-mockup-create.log in the output directory to capture Redfish traces with the service" )
     argget.add_argument( "--maxlogentries", "-maxlogentries", type = int, help = "The maximum number of log entries to collect in each log service" )
     argget.add_argument( "--forcefolderrename", "-forcefolderrename", action = "store_true", help = "Indicates if URIs containing characters that are disallowed in Windows folder names are renamed to replace the characters with underscores" )
+    argget.add_argument( "--startURI", "-startURI", type = str, help = "Limit mockup to a specific URI tree (e.g. /redfish/v1/Chassis)", default = None )
     args, unknown = argget.parse_known_args()
 
     # Convert the authentication method to something usable with the Redfish library
@@ -117,10 +118,13 @@ def main():
 
     # Scan the service
     response_times = {}
-    scan_resource( redfish_obj, args, response_times, "/redfish" )
-    scan_resource( redfish_obj, args, response_times, "/redfish/v1/odata" )
-    scan_resource( redfish_obj, args, response_times, "/redfish/v1/$metadata", is_csdl = True )
-    scan_resource( redfish_obj, args, response_times, "/redfish/v1" )
+    if args.startURI:
+        scan_resource( redfish_obj, args, response_times, args.startURI )
+    else:
+        scan_resource( redfish_obj, args, response_times, "/redfish" )
+        scan_resource( redfish_obj, args, response_times, "/redfish/v1/odata" )
+        scan_resource( redfish_obj, args, response_times, "/redfish/v1/$metadata", is_csdl = True )
+        scan_resource( redfish_obj, args, response_times, "/redfish/v1" )
     redfish_obj.logout()
 
     # Add time statistics to the readme
@@ -180,7 +184,7 @@ def scan_resource( redfish_obj, args, response_times, uri, is_csdl = False ):
         print( "Getting {}...".format( uri ) )
     try:
         start_time = time.time()
-        resource = redfish_obj.get( uri, headers = { "Accept-Encoding": "*" } )
+        resource = redfish_obj.get( uri, headers = { "Accept-Encoding": "identity" } )
         end_time = time.time()
     except Exception as err:
         print( "ERROR: Could not get '{}': {}".format( uri, err ) )
@@ -286,7 +290,8 @@ def scan_object( redfish_obj, args, response_times, object ):
             if item == "@odata.id" or item == "Uri" or item == "Members@odata.nextLink" or item == "@Redfish.ActionInfo":
                 if isinstance( object[item], str ):
                     if object[item].startswith( "/" ) and "#" not in object[item]:
-                        scan_resource( redfish_obj, args, response_times, object[item] )
+                        if args.startURI is None or object[item].startswith( args.startURI ):
+                            scan_resource( redfish_obj, args, response_times, object[item] )
 
             # If the item is an object or array, scan one level deeper
             elif isinstance( object[item], dict ) or isinstance( object[item], list ):
