@@ -11,6 +11,7 @@ Brief : This tool walks a service and creates a mockup from all resources
 """
 
 import argparse
+import configparser
 import datetime
 import json
 import os
@@ -24,13 +25,94 @@ import gc
 from redfish import redfish_logger
 
 # Version info
-tool_version = "1.2.0"
+tool_version = "1.3.0"
 
 # For Windows, there are restricted characters in folder names that could be used in URIs
 disallowed_folder_characters_win = [ ":", "*", "?", "\"", "<", ">", "|" ]
 folder_name_fix = False
 if sys.platform == "win32" or sys.platform == "cygwin":
     folder_name_fix = True
+
+def load_config(config_file):
+    """
+    Loads configuration from a config.ini file
+
+    Args:
+        config_file: Path to the configuration file
+
+    Returns:
+        A dictionary containing the configuration values
+    """
+    config = configparser.ConfigParser()
+    config_values = {}
+
+    try:
+        if not os.path.isfile(config_file):
+            return config_values
+        
+        config.read(config_file)
+        
+        # Authentication section
+        if config.has_section('Authentication'):
+            if config.has_option('Authentication', 'user'):
+                user = config.get('Authentication', 'user').strip()
+                if user:
+                    config_values['user'] = user
+            if config.has_option('Authentication', 'password'):
+                password = config.get('Authentication', 'password').strip()
+                if password:
+                    config_values['password'] = password
+        
+        # Connection section
+        if config.has_section('Connection'):
+            if config.has_option('Connection', 'rhost'):
+                rhost = config.get('Connection', 'rhost').strip()
+                if rhost:
+                    config_values['rhost'] = rhost
+            if config.has_option('Connection', 'Secure'):
+                config_values['Secure'] = config.getboolean('Connection', 'Secure')
+            if config.has_option('Connection', 'Auth'):
+                auth = config.get('Connection', 'Auth').strip()
+                if auth:
+                    config_values['Auth'] = auth
+        
+        # Output section
+        if config.has_section('Output'):
+            if config.has_option('Output', 'Dir'):
+                dir_val = config.get('Output', 'Dir').strip()
+                if dir_val:
+                    config_values['Dir'] = dir_val
+            if config.has_option('Output', 'description'):
+                desc = config.get('Output', 'description').strip()
+                if desc:
+                    config_values['description'] = desc
+            if config.has_option('Output', 'Copyright'):
+                copyright_val = config.get('Output', 'Copyright').strip()
+                if copyright_val:
+                    config_values['Copyright'] = copyright_val
+        
+        # Options section
+        if config.has_section('Options'):
+            if config.has_option('Options', 'Headers'):
+                config_values['Headers'] = config.getboolean('Options', 'Headers')
+            if config.has_option('Options', 'Time'):
+                config_values['Time'] = config.getboolean('Options', 'Time')
+            if config.has_option('Options', 'quiet'):
+                config_values['quiet'] = config.getboolean('Options', 'quiet')
+            if config.has_option('Options', 'trace'):
+                config_values['trace'] = config.getboolean('Options', 'trace')
+            if config.has_option('Options', 'maxlogentries'):
+                maxlog = config.get('Options', 'maxlogentries').strip()
+                if maxlog:
+                    config_values['maxlogentries'] = int(maxlog)
+            if config.has_option('Options', 'forcefolderrename'):
+                config_values['forcefolderrename'] = config.getboolean('Options', 'forcefolderrename')
+        
+    except Exception as err:
+        print("WARNING: Error reading config file '{}': {}".format(config_file, err))
+        return {}
+    
+    return config_values
 
 def main():
     """
@@ -39,21 +121,72 @@ def main():
 
     # Get the input arguments
     argget = argparse.ArgumentParser( description = "A tool to walk a Redfish service and create a mockup from all resources" )
-    argget.add_argument( "--user", "-u", type = str, required = True, help = "The user name for authentication" )
-    argget.add_argument( "--password", "-p",  type = str, required = True, help = "The password for authentication" )
-    argget.add_argument( "--rhost", "-r", type = str, required = True, help = "The IP address (and port) of the Redfish service" )
-    argget.add_argument( "--Dir", "-D", type = str, help = "Output directory for the mockup; defaults to 'rfMockUpDfltDir'", default = "rfMockUpDfltDir" )
+    argget.add_argument( "--config", "-c", type = str, help = "Path to configuration file; defaults to 'config.ini' in current directory", default = "config.ini" )
+    argget.add_argument( "--user", "-u", type = str, help = "The user name for authentication" )
+    argget.add_argument( "--password", "-p",  type = str, help = "The password for authentication" )
+    argget.add_argument( "--rhost", "-r", type = str, help = "The IP address (and port) of the Redfish service" )
+    argget.add_argument( "--Dir", "-D", type = str, help = "Output directory for the mockup; defaults to 'rfMockUpDfltDir'" )
     argget.add_argument( "--Secure", "-S", action = "store_true", help = "Use HTTPS for all operations" )
-    argget.add_argument( "--Auth", "-A", type = str, help = "Authentication mode", choices = [ "None", "Basic", "Session" ], default = "Session" )
+    argget.add_argument( "--Auth", "-A", type = str, help = "Authentication mode", choices = [ "None", "Basic", "Session" ] )
     argget.add_argument( "--Headers", "-H", action = "store_true", help = "Captures the response headers in the mockup" )
     argget.add_argument( "--Time", "-T", action = "store_true", help = "Capture the time of each GET in the mockup" )
-    argget.add_argument( "--Copyright", "-C", type = str, help = "Copyright string to add to each resource", default = None )
-    argget.add_argument( "--description", "-d", type = str, help = "Mockup description to add to the output readme file", default = "" )
+    argget.add_argument( "--Copyright", "-C", type = str, help = "Copyright string to add to each resource" )
+    argget.add_argument( "--description", "-d", type = str, help = "Mockup description to add to the output readme file" )
     argget.add_argument( "--quiet", "-q", action = "store_true", help = "Quiet mode; progress messages suppressed" )
     argget.add_argument( "--trace", "-trace", action = "store_true", help = "Enable tracing; creates the file rf-mockup-create.log in the output directory to capture Redfish traces with the service" )
     argget.add_argument( "--maxlogentries", "-maxlogentries", type = int, help = "The maximum number of log entries to collect in each log service" )
     argget.add_argument( "--forcefolderrename", "-forcefolderrename", action = "store_true", help = "Indicates if URIs containing characters that are disallowed in Windows folder names are renamed to replace the characters with underscores" )
     args, unknown = argget.parse_known_args()
+
+    # Load configuration from file
+    config_values = load_config(args.config)
+    
+    # Required arguments: rhost, user, password
+    if args.rhost is None:
+        args.rhost = config_values.get('rhost')
+    if args.user is None:
+        args.user = config_values.get('user')
+    if args.password is None:
+        args.password = config_values.get('password')
+    
+    # Check if required arguments are present
+    if args.rhost is None:
+        print("ERROR: Redfish service host is required (provide via --rhost or config file)")
+        sys.exit(1)
+    if args.user is None:
+        print("ERROR: User name is required (provide via --user or config file)")
+        sys.exit(1)
+    if args.password is None:
+        print("ERROR: Password is required (provide via --password or config file)")
+        sys.exit(1)
+    
+    # Optional string arguments
+    if args.Dir is None:
+        args.Dir = config_values.get('Dir', 'rfMockUpDfltDir')
+    if args.Auth is None:
+        args.Auth = config_values.get('Auth', 'Session')
+    if args.Copyright is None:
+        args.Copyright = config_values.get('Copyright')
+    if args.description is None:
+        args.description = config_values.get('description', '')
+    
+    # Optional Boolean arguments
+    if not args.Secure and 'Secure' in config_values:
+        args.Secure = config_values['Secure']
+    if not args.Headers and 'Headers' in config_values:
+        args.Headers = config_values['Headers']
+    if not args.Time and 'Time' in config_values:
+        args.Time = config_values['Time']
+    if not args.quiet and 'quiet' in config_values:
+        args.quiet = config_values['quiet']
+    if not args.trace and 'trace' in config_values:
+        args.trace = config_values['trace']
+    if not args.forcefolderrename and 'forcefolderrename' in config_values:
+        args.forcefolderrename = config_values['forcefolderrename']
+    
+    # Integer arguments
+    if args.maxlogentries is None:
+        args.maxlogentries = config_values.get('maxlogentries')
 
     # Convert the authentication method to something usable with the Redfish library
     # This is needed for backwards compatibility with older versions of the tool
