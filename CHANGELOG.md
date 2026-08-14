@@ -1,5 +1,8 @@
 # Change Log
 
+## [1.2.1] - 2026-08-14
+- Added configuration file support
+
 ## [1.2.0] - 2023-08-22
 - Added 'forcefolderrename' argument to replace characters that are disallowed in Windows folder names with underscores
 
