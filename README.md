@@ -20,24 +20,65 @@ To run the mockup server as a Docker container:
 
 ## Usage
 
+The Redfish Mockup Creator can be configured using either command-line arguments or a configuration file (config.ini).
+
+### Configuration File
+
+You can use a `config.ini` file in the current working directory with your settings. 
+This is useful for repeated operations with the same configuration.
+
+Example `config.ini`:
+
+```ini
+[Authentication]
+user = username
+password = password
+
+[Connection]
+rhost = <RedfishIP>
+Secure = true
+Auth = Session
+
+[Output]
+Dir = /output
+description = My Redfish mockup
+
+[Options]
+Headers = true
+Time = true
+quiet = false
 ```
-usage: redfishMockupCreate.py [-h] --user USER --password PASSWORD --rhost
-                              RHOST [--Secure] [--Auth {None,Basic,Session}]
+
+To use a configuration file in a different location, use the `--config` option:
+
+```bash
+python redfishMockupCreate.py --config /path/to/myconfig.ini
+```
+
+**Note:** Command-line arguments always override configuration file settings, ensuring backward compatibility.
+
+### Command-Line Arguments
+
+```
+usage: redfishMockupCreate.py [-h] [--config CONFIG] [--user USER] 
+                              [--password PASSWORD] [--rhost RHOST]
+                              [--Secure] [--Auth {None,Basic,Session}]
                               [--Headers] [--Time] [--Dir DIR]
                               [--Copyright COPYRIGHT]
                               [--description DESCRIPTION] [--quiet]
 
 A tool to walk a Redfish service and create a mockup from all resources
 
-required arguments:
+optional arguments:
+  -h, --help            show this help message and exit
+  --config CONFIG, -c CONFIG
+                        Path to configuration file; defaults to 'config.ini'
+                        in current directory
   --user USER, -u USER  The user name for authentication
   --password PASSWORD, -p PASSWORD
                         The password for authentication
   --rhost RHOST, -r RHOST
                         The IP address (and port) of the Redfish service
-
-optional arguments:
-  -h, --help            show this help message and exit
   --Dir DIR, -D DIR     Output directory for the mockup; defaults to
                         'rfMockUpDfltDir'
   --Secure, -S          Use HTTPS for all operations
@@ -62,7 +103,33 @@ optional arguments:
                         replace the characters with underscores
 ```
 
-Example: `python redfishMockupCreate.py -u root -p root -r 192.168.1.100 -S -D /output`
+### Examples
+
+Using command-line arguments only (backward compatible):
+
+```bash
+python redfishMockupCreate.py -u username -p password -r RedfishIP -S -D /outputDir
+```
+
+Using a configuration file:
+
+```bash
+# Uses config.ini from current directory
+python redfishMockupCreate.py
+```
+
+Using a custom configuration file:
+
+```bash
+python redfishMockupCreate.py --config /path/to/custom.ini
+```
+
+Mixing configuration file and command-line arguments (command-line overrides config):
+
+```bash
+# Uses settings from config.ini but overrides the output directory
+python redfishMockupCreate.py --Dir /different/output
+```
 
 The tool will log into the service specified by the *rhost* argument using the credentials provided by the *user* and *password* arguments.
 It will then walk the service to find all resources and place each resource in directory specified by the *Dir* argument.
@@ -101,7 +168,7 @@ To run as a Docker container, use one of these actions to pull or build the cont
 This command runs the container with a specified mockup, where `<path-to-mockup>` is the path to the mockup directory:
 
 ```bash
-docker run --rm --user="$(id -u):$(id -g)" -v <path-to-mockup>:/mockup dmtf/redfish-mockup-creator:latest -u root -p root -r 192.168.1.100 -S
+docker run --rm --user="$(id -u):$(id -g)" -v <path-to-mockup>:/mockup dmtf/redfish-mockup-creator:latest -u username -p password -r RedfishIP -S
 ```
 
 ## Release Process
